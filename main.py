@@ -41,17 +41,13 @@ class AI:
             for c in range(COLS):
                 if c + 3 < COLS:
                     w = [board[r][c + i] for i in range(4)]
-                    if w.count(p) == 4:
-                        score += 100
-                    elif w.count(p) == 3 and w.count(0) == 1:
-                        score += 5
+                    if w.count(p) == 4: score += 100
+                    elif w.count(p) == 3 and w.count(0) == 1: score += 5
                     if w.count(opp) == 3 and w.count(0) == 1: score -= 80
                 if r + 3 < ROWS:
                     w = [board[r + i][c] for i in range(4)]
-                    if w.count(p) == 4:
-                        score += 100
-                    elif w.count(p) == 3 and w.count(0) == 1:
-                        score += 5
+                    if w.count(p) == 4: score += 100
+                    elif w.count(p) == 3 and w.count(0) == 1: score += 5
                     if w.count(opp) == 3 and w.count(0) == 1: score -= 80
         return score
 
@@ -103,30 +99,35 @@ class AI:
 class ResultDialog(QDialog):
     def __init__(self, text, mode, diff, stats, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Результат")
+        self.setWindowTitle("Результат матча")
+        self.setFixedSize(360, 240)
+
         l = QVBoxLayout(self)
 
         t = QLabel(text)
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setStyleSheet("font-size:22px; font-weight:bold; color:#1e293b; margin-top:10px;")
         l.addWidget(t)
 
         stats_lbl = QLabel()
         stats_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        stats_lbl.setStyleSheet("font-size:16px; color:#475569; font-weight:500; margin: 15px 0;")
 
         if mode == "pvp":
             p1 = stats.get("pvp_p1", 0)
             p2 = stats.get("pvp_p2", 0)
-            stats_lbl.setText(f"Игрок 1: {p1} | Игрок 2: {p2}")
+            stats_lbl.setText(f"Игрок 1: {p1} побед  |  Игрок 2: {p2} побед")
         else:
             diff_names = {"easy": "Легкая", "medium": "Средняя", "hard": "Сложная"}
             p1 = stats.get(f"pve_{diff}_p1", 0)
             p2 = stats.get(f"pve_{diff}_pc", 0)
-            stats_lbl.setText(f"Сложность: {diff_names.get(diff)}\nВы: {p1} | ПК: {p2}")
+            stats_lbl.setText(f"Сложность: {diff_names.get(diff)}\nВы: {p1} побед  |  ПК: {p2} побед")
 
         l.addWidget(stats_lbl)
 
         self.new_btn = QPushButton("Новая игра")
         self.menu_btn = QPushButton("В меню")
+
         l.addWidget(self.new_btn)
         l.addWidget(self.menu_btn)
 
@@ -137,6 +138,7 @@ class Game(QMainWindow):
         self.mode = mode
         self.difficulty = difficulty
         self.setWindowTitle("Четыре в ряд")
+        self.showMaximized()
 
         self.board = [[0] * COLS for _ in range(ROWS)]
         self.current = 1
@@ -152,23 +154,28 @@ class Game(QMainWindow):
 
         self.info = QLabel("Ход игрока 1")
         self.info.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.info.setStyleSheet("font-size:24px; font-weight:bold; margin: 15px;")
 
         self.board_widget = QWidget()
+        self.board_widget.setStyleSheet("background:#2563eb; border-radius:20px; padding:15px;")
+
         self.grid = QGridLayout(self.board_widget)
+        self.grid.setSpacing(10)
 
         self.cells = []
         for r in range(ROWS):
             row = []
             for c in range(COLS):
                 b = QPushButton()
-                b.setFixedSize(60, 60)
+                b.setFixedSize(86, 86)
                 b.clicked.connect(lambda _, col=c: self.move(col))
                 self.grid.addWidget(b, r, c)
                 row.append(b)
             self.cells.append(row)
 
-        btn = QPushButton("Сброс")
+        btn = QPushButton("Новая игра")
         btn.clicked.connect(self.reset)
+        btn.setFixedWidth(200)
 
         root.addWidget(self.info)
         root.addWidget(self.board_widget, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -187,6 +194,8 @@ class Game(QMainWindow):
             try:
                 with open(STATS_FILE, "r", encoding="utf-8") as f:
                     self.stats = json.load(f)
+                    for k in default_stats:
+                        if k not in self.stats: self.stats[k] = 0
             except:
                 self.stats = default_stats
         else:
@@ -211,12 +220,13 @@ class Game(QMainWindow):
             for c in range(COLS):
                 color = "white"
                 if self.board[r][c] == 1:
-                    color = "red"
+                    color = "#dc2626"
                 elif self.board[r][c] == 2:
-                    color = "yellow"
-
-                border = "3px solid green" if (r, c) in self.win_cells else "1px solid black"
-                self.cells[r][c].setStyleSheet(f"background: {color}; border: {border};")
+                    color = "#facc15"
+                border = "6px solid #22c55e" if (r, c) in self.win_cells else "2px solid #334155"
+                self.cells[r][c].setStyleSheet(
+                    f"background:{color}; border-radius:43px; border:{border};"
+                )
 
     def reset(self):
         self.board = [[0] * COLS for _ in range(ROWS)]
@@ -264,8 +274,7 @@ class Game(QMainWindow):
             return
 
         self.current = 2 if self.current == 1 else 1
-        self.info.setText(
-            "Ход компьютера" if self.mode == "pve" and self.current == 2 else f"Ход игрока {self.current}")
+        self.info.setText("Ход компьютера" if self.mode == "pve" and self.current == 2 else f"Ход игрока {self.current}")
 
         if self.mode == "pve" and self.current == 2 and not self.over:
             self.ai_move()
@@ -292,7 +301,8 @@ class Game(QMainWindow):
                             cells.append((rr, cc))
                         else:
                             break
-                    if len(cells) == 4: return True, cells
+                    if len(cells) == 4:
+                        return True, cells
         return False, []
 
     def finish(self, text):
@@ -310,25 +320,32 @@ class Game(QMainWindow):
 class Menu(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.showMaximized()
         w = QWidget()
         self.setCentralWidget(w)
         l = QVBoxLayout(w)
 
         t = QLabel("ЧЕТЫРЕ В РЯД")
         t.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        t.setStyleSheet("font-size:46px; font-weight:bold; margin-bottom: 30px;")
 
         pvp = QPushButton("Игрок против игрока")
         pve = QPushButton("Игрок против ПК")
         exitb = QPushButton("Выход")
 
+        for btn in (pvp, pve, exitb):
+            btn.setFixedWidth(350)
+
         pvp.clicked.connect(self.start_pvp)
         pve.clicked.connect(self.start_pve)
         exitb.clicked.connect(self.close)
 
-        l.addWidget(t)
-        l.addWidget(pvp)
-        l.addWidget(pve)
-        l.addWidget(exitb)
+        l.addStretch()
+        l.addWidget(t, alignment=Qt.AlignmentFlag.AlignCenter)
+        l.addWidget(pvp, alignment=Qt.AlignmentFlag.AlignCenter)
+        l.addWidget(pve, alignment=Qt.AlignmentFlag.AlignCenter)
+        l.addWidget(exitb, alignment=Qt.AlignmentFlag.AlignCenter)
+        l.addStretch()
 
     def start_pvp(self):
         self.g = Game("pvp")
@@ -346,6 +363,12 @@ class Menu(QMainWindow):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setStyleSheet("""
+    QWidget{ background:#eef4ff; font-family:Segoe UI; }
+    QPushButton{ background:#2563eb; color:white; border:none; border-radius:12px; padding:12px; font-size:16px; font-weight:bold; }
+    QPushButton:hover{ background:#1d4ed8; }
+    QLabel{ color:#1e293b; }
+    """)
     m = Menu()
     m.show()
     sys.exit(app.exec())
