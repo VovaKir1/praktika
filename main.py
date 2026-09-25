@@ -1,6 +1,7 @@
 import sys, random, copy, json, os
 from PyQt6.QtWidgets import *
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, QTimer
+from PyQt6.QtGui import QColor, QPainter, QBrush
 
 ROWS, COLS = 6, 7
 STATS_FILE = "stats.json"
@@ -41,13 +42,17 @@ class AI:
             for c in range(COLS):
                 if c + 3 < COLS:
                     w = [board[r][c + i] for i in range(4)]
-                    if w.count(p) == 4: score += 100
-                    elif w.count(p) == 3 and w.count(0) == 1: score += 5
+                    if w.count(p) == 4:
+                        score += 100
+                    elif w.count(p) == 3 and w.count(0) == 1:
+                        score += 5
                     if w.count(opp) == 3 and w.count(0) == 1: score -= 80
                 if r + 3 < ROWS:
                     w = [board[r + i][c] for i in range(4)]
-                    if w.count(p) == 4: score += 100
-                    elif w.count(p) == 3 and w.count(0) == 1: score += 5
+                    if w.count(p) == 4:
+                        score += 100
+                    elif w.count(p) == 3 and w.count(0) == 1:
+                        score += 5
                     if w.count(opp) == 3 and w.count(0) == 1: score -= 80
         return score
 
@@ -94,6 +99,21 @@ class AI:
     @classmethod
     def hard(cls, board):
         return cls.minimax(board, 4, -float('inf'), float('inf'), True)[0]
+
+
+class FallingChip(QWidget):
+    def __init__(self, color, size, parent):
+        super().__init__(parent)
+        self.color = color
+        self.setFixedSize(size, size)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+    def paintEvent(self, event):
+        qp = QPainter(self)
+        qp.setRenderHint(QPainter.RenderHint.Antialiasing)
+        qp.setPen(Qt.PenStyle.NoPen)
+        qp.setBrush(QBrush(QColor(self.color)))
+        qp.drawEllipse(0, 0, self.width(), self.height())
 
 
 class ResultDialog(QDialog):
@@ -145,6 +165,7 @@ class Game(QMainWindow):
         self.start_player = 1
         self.over = False
         self.win_cells = []
+        self.locked = False
 
         self.load_stats()
 
@@ -210,9 +231,11 @@ class Game(QMainWindow):
 
     def update_victory_count(self, winner):
         if self.mode == "pvp":
-            self.stats[f"pvp_p{winner}"] += 1
+            key = f"pvp_p{winner}"
+            self.stats[key] += 1
         else:
-            self.stats[f"pve_{self.difficulty}_" + ("p1" if winner == 1 else "pc")] += 1
+            key = f"pve_{self.difficulty}_" + ("p1" if winner == 1 else "pc")
+            self.stats[key] += 1
         self.save_stats()
 
     def repaint_board(self):
@@ -232,6 +255,7 @@ class Game(QMainWindow):
         self.board = [[0] * COLS for _ in range(ROWS)]
         self.over = False
         self.win_cells = []
+        self.locked = False
 
         if self.mode == "pvp":
             self.start_player = 2 if self.start_player == 1 else 1
@@ -247,13 +271,33 @@ class Game(QMainWindow):
             if self.board[r][col] == 0: return r
         return None
 
+    def animate_chip_drop(self, row, col, callback):
+        target_btn = self.cells[row][col]
+        end_pos = target_btn.pos()
+        start_pos = QPoint(end_pos.x(), -100)
+
+        color = "#dc2626" if self.current == 1 else "#facc15"
+        falling_widget = FallingChip(color, 86, self.board_widget)
+        falling_widget.move(start_pos)
+        falling_widget.show()
+
+        self.anim = QPropertyAnimation(falling_widget, b"pos")
+        self.anim.setDuration(400)
+        self.anim.setStartValue(start_pos)
+        self.anim.setEndValue(end_pos)
+        self.anim.setEasingCurve(QEasingCurve.Type.OutBounce)
+
+        self.anim.finished.connect(lambda: [falling_widget.deleteLater(), callback()])
+        self.anim.start()
+
     def move(self, col):
-        if self.over: return
+        if self.over or self.locked: return
         r = self.free_row(col)
         if r is None: return
 
+        self.locked = True
         self.board[r][col] = self.current
-        self.after_move()
+        self.animate_chip_drop(r, col, self.after_move)
 
     def after_move(self):
         self.repaint_board()
@@ -263,21 +307,25 @@ class Game(QMainWindow):
             self.win_cells = cells
             self.repaint_board()
             self.over = True
+
             self.update_victory_count(self.current)
+
             text = f"Победил {'Компьютер' if self.mode == 'pve' and self.current == 2 else 'Игрок ' + str(self.current)}"
-            self.finish(text)
+            QTimer.singleShot(300, lambda: self.finish(text))
             return
 
         if all(self.board[0][c] for c in range(COLS)):
             self.over = True
-            self.finish("Ничья")
+            QTimer.singleShot(300, lambda: self.finish("Ничья"))
             return
 
         self.current = 2 if self.current == 1 else 1
-        self.info.setText("Ход компьютера" if self.mode == "pve" and self.current == 2 else f"Ход игрока {self.current}")
+        self.info.setText(
+            f"Ход компьютера" if self.mode == "pve" and self.current == 2 else f"Ход игрока {self.current}")
+        self.locked = False
 
         if self.mode == "pve" and self.current == 2 and not self.over:
-            self.ai_move()
+            QTimer.singleShot(400, self.ai_move)
 
     def ai_move(self):
         if self.over: return
